@@ -23,7 +23,7 @@ CHANNELS = os.environ.get("CHANNELS", "2")
 BIT_DEPTH = os.environ.get("BIT_DEPTH", "24")
 PORT = int(os.environ.get("RELAY_PORT", "8100"))
 MOUNT = os.environ.get("MOUNT_POINT", "live.flac")
-STREAM_NAME = os.environ.get("STREAM_NAME", "Turntable")
+STREAM_NAME = os.environ.get("STREAM_NAME", "Audio Source")
 CHUNK_SIZE = int(os.environ.get("CHUNK_SIZE", "4096"))
 THREAD_QUEUE_SIZE = os.environ.get("THREAD_QUEUE_SIZE", "4096")
 

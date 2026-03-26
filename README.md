@@ -1,12 +1,12 @@
 # lossless-stream
 
-Stream a turntable (or any analog audio source) to [Music Assistant](https://music-assistant.io/) as a lossless FLAC-over-HTTP stream. Uses ffmpeg for ALSA capture, a lightweight Python aiohttp relay to serve the stream, and connects to Music Assistant as a radio station URL — zero quality loss, bit-perfect audio from vinyl to your whole-home system.
+Stream any analog audio source to [Music Assistant](https://music-assistant.io/) as a lossless FLAC-over-HTTP stream. Uses ffmpeg for ALSA capture, a lightweight Python aiohttp relay to serve the stream, and connects to Music Assistant as a radio station URL — zero quality loss, bit-perfect audio from any line-in source to your whole-home system.
 
 ## Architecture
 
 ```
 ┌───────────┐    analog/TOSLINK    ┌────────────┐    ALSA     ┌────────┐
-│ Turntable ├─────────────────────►│ Sound Card ├────────────►│ ffmpeg │
+│ Audio Source ├─────────────────────►│ Sound Card ├────────────►│ ffmpeg │
 └───────────┘                      └────────────┘             └───┬────┘
                                                                   │ FLAC
                                                             ┌─────▼──────┐
@@ -56,7 +56,7 @@ services:
       BIT_DEPTH: "24"
       RELAY_PORT: "8100"
       MOUNT_POINT: "live.flac"
-      STREAM_NAME: "Turntable"
+      STREAM_NAME: "Audio Source"
       CHUNK_SIZE: "4096"
       THREAD_QUEUE_SIZE: "4096"
 ```
@@ -104,7 +104,7 @@ Set this as `ALSA_DEVICE` in your `docker-compose.yml` or `.env` file.
 | `BIT_DEPTH` | `24` | Bit depth (16 or 24) |
 | `RELAY_PORT` | `8100` | HTTP port the stream is served on |
 | `MOUNT_POINT` | `live.flac` | URL path for the stream (stream URL = `http://host:port/mount`) |
-| `STREAM_NAME` | `Turntable` | Name shown in logs |
+| `STREAM_NAME` | `Audio Source` | Name shown in logs |
 | `CHUNK_SIZE` | `4096` | Broadcast chunk size in bytes |
 | `THREAD_QUEUE_SIZE` | `4096` | ffmpeg thread queue size (increase if you see buffer overrun warnings) |
 
@@ -116,7 +116,7 @@ Set this as `ALSA_DEVICE` in your `docker-compose.yml` or `.env` file.
    ```
    http://<your-host-ip>:8100/live.flac
    ```
-4. Play it — audio from your turntable now streams to any MA player
+4. Play it — audio from your source now streams to any MA player
 
 > **Tip:** Use the host's LAN IP (e.g., `192.168.1.50`), not `localhost`, since Music Assistant runs in its own container.
 
