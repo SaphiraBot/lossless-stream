@@ -23,7 +23,8 @@ Stream any analog audio source to [Music Assistant](https://music-assistant.io/)
 
 ## Requirements
 
-- **Linux host** with ALSA-capable sound card (USB audio interface, TOSLINK card, etc.)
+- **Linux host** *(required — macOS and Windows are not supported)* — audio capture uses ALSA, which is Linux-only
+- ALSA-capable sound card (USB audio interface, TOSLINK card, etc.)
 - **Docker** (or Podman)
 - **Audio source** connected to the sound card (turntable via phono preamp, tape deck, etc.)
 
