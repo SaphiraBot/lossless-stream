@@ -200,12 +200,45 @@ arecord -l
 cp .env.example .env
 # Edit .env — at minimum, set ALSA_DEVICE to match your card
 
-# 4. Build and start
-docker compose up -d --build
+# 4. Build the image
+docker build -t lossless-stream .
 
-# 5. Verify
+# 5. Run it
+docker run -d \
+  --name lossless-stream \
+  --restart unless-stopped \
+  --network host \
+  --device /dev/snd:/dev/snd \
+  --env-file .env \
+  lossless-stream
+
+# 6. Verify
 curl http://localhost:8100/health
 ```
+
+**Using docker-compose with a local build?** Copy the Quick Start compose snippet into a `docker-compose.yml` and replace the `image:` line with `build: .`:
+
+```yaml
+services:
+  lossless-stream:
+    build: .
+    restart: unless-stopped
+    network_mode: host
+    devices:
+      - /dev/snd:/dev/snd
+    environment:
+      ALSA_DEVICE: "hw:1,0"
+      SAMPLE_RATE: "48000"
+      CHANNELS: "2"
+      BIT_DEPTH: "24"
+      RELAY_PORT: "8100"
+      MOUNT_POINT: "live.flac"
+      STREAM_NAME: "Audio Source"
+      CHUNK_SIZE: "4096"
+      THREAD_QUEUE_SIZE: "4096"
+```
+
+Then run `docker compose up -d --build`.
 
 ## License
 
