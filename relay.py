@@ -79,24 +79,46 @@ if EXTRA_HEADERS_RAW:
 
 # ── ffmpeg command ────────────────────────────────────────────────────
 
-FFMPEG_CMD = [
-    "ffmpeg",
-    "-probesize", "32",
-    "-analyzeduration", "0",
-    "-fflags", "nobuffer",
-    "-f", "alsa",
-    "-thread_queue_size", THREAD_QUEUE_SIZE,
-    "-ac", CHANNELS,
-    "-ar", SAMPLE_RATE,
-    "-i", ALSA_DEVICE,
-    "-c:a", "flac",
-    "-compression_level", "0",
-    "-sample_fmt", "s32",
-    "-frame_size", "1152",
-    "-f", "flac",
-    "-flush_packets", "1",
-    "-",
-]
+# TEST_SOURCE env var: if set to "lavfi" or "sine", use a synthetic sine
+# wave instead of ALSA capture.  Useful for CI/testing on hosts without
+# a sound card.
+TEST_SOURCE = os.environ.get("TEST_SOURCE", "").lower()
+
+if TEST_SOURCE in ("lavfi", "sine", "test"):
+    FFMPEG_CMD = [
+        "ffmpeg",
+        "-re",
+        "-f", "lavfi",
+        "-i", f"sine=frequency=440:sample_rate={SAMPLE_RATE}",
+        "-ac", CHANNELS,
+        "-c:a", "flac",
+        "-compression_level", "0",
+        "-sample_fmt", "s32",
+        "-frame_size", "1152",
+        "-f", "flac",
+        "-flush_packets", "1",
+        "-",
+    ]
+    log.info("TEST MODE: using lavfi sine-wave source instead of ALSA")
+else:
+    FFMPEG_CMD = [
+        "ffmpeg",
+        "-probesize", "32",
+        "-analyzeduration", "0",
+        "-fflags", "nobuffer",
+        "-f", "alsa",
+        "-thread_queue_size", THREAD_QUEUE_SIZE,
+        "-ac", CHANNELS,
+        "-ar", SAMPLE_RATE,
+        "-i", ALSA_DEVICE,
+        "-c:a", "flac",
+        "-compression_level", "0",
+        "-sample_fmt", "s32",
+        "-frame_size", "1152",
+        "-f", "flac",
+        "-flush_packets", "1",
+        "-",
+    ]
 
 FLAC_MAGIC = b"fLaC"
 
