@@ -60,6 +60,9 @@ services:
       STREAM_NAME: "Audio Source"
       CHUNK_SIZE: "4096"
       THREAD_QUEUE_SIZE: "4096"
+      MAX_LISTENERS: "10"
+      MAX_QUEUE_SIZE_KB: "512"
+      SOURCE_TIMEOUT: "10"
 ```
 
 ### Steps
@@ -105,9 +108,15 @@ Set this as `ALSA_DEVICE` in your `docker-compose.yml` or `.env` file.
 | `BIT_DEPTH` | `24` | Bit depth (16 or 24) |
 | `RELAY_PORT` | `8100` | HTTP port the stream is served on |
 | `MOUNT_POINT` | `live.flac` | URL path for the stream (stream URL = `http://host:port/mount`) |
-| `STREAM_NAME` | `Audio Source` | Name shown in logs |
+| `STREAM_NAME` | `Audio Source` | Stream name shown in logs and the `/metadata` endpoint |
 | `CHUNK_SIZE` | `4096` | Broadcast chunk size in bytes |
 | `THREAD_QUEUE_SIZE` | `4096` | ffmpeg thread queue size (increase if you see buffer overrun warnings) |
+| `MAX_LISTENERS` | `10` | Maximum simultaneous listeners — new connections get HTTP 503 when full |
+| `MAX_QUEUE_SIZE_KB` | `512` | Per-client write buffer limit in KB — slow clients exceeding this are dropped |
+| `SOURCE_TIMEOUT` | `10` | Seconds of silence from ffmpeg before the source is flagged as timed-out |
+| `HEADER_TIMEOUT` | `15` | Idle-connection / keep-alive timeout in seconds |
+| `RECORD_FILE` | *(empty)* | If set, the raw FLAC stream is also written to this file path |
+| `EXTRA_HEADERS` | *(empty)* | JSON object of extra HTTP headers added to stream responses (e.g. `'{"X-Custom": "value"}'`) |
 
 ## Adding to Music Assistant
 
@@ -132,13 +141,17 @@ Both work. Choose based on your setup:
 
 If you hear hum or buzz with analog, try a ground loop isolator or switch to TOSLINK.
 
-## Health Check
+## API Endpoints
 
-The relay exposes a health endpoint:
+### Health Check — `GET /health`
+
+Returns server and source status. Used by Docker's built-in `HEALTHCHECK`.
 
 ```bash
 curl http://localhost:8100/health
 ```
+
+**Normal response (200):**
 
 ```json
 {
@@ -151,6 +164,171 @@ curl http://localhost:8100/health
   "headers_complete": true
 }
 ```
+
+**Degraded response (503) — source timeout:**
+
+When ffmpeg is running but has stopped producing audio data (e.g. ALSA device stalled):
+
+```json
+{
+  "status": "degraded",
+  "clients": 0,
+  "mount": "/live.flac",
+  "device": "hw:0,0",
+  "ffmpeg_alive": true,
+  "headers_cached": 278,
+  "headers_complete": true,
+  "ffmpeg": "timeout"
+}
+```
+
+**Dead response (503) — ffmpeg not running:**
+
+```json
+{
+  "status": "ffmpeg_dead",
+  "clients": 0,
+  "mount": "/live.flac",
+  "device": "hw:0,0",
+  "ffmpeg_alive": false,
+  "headers_cached": 0,
+  "headers_complete": false
+}
+```
+
+### Statistics — `GET /stats`
+
+Rich statistics about the server, source, stream, and listeners.
+
+```bash
+curl http://localhost:8100/stats
+```
+
+```json
+{
+  "server": "lossless-stream/1.0.0",
+  "uptime_seconds": 86400,
+  "source": {
+    "connected": true,
+    "connected_since": "2026-03-25T10:00:00.000000+00:00",
+    "device": "hw:0,0",
+    "format": "FLAC",
+    "samplerate": 48000,
+    "bitdepth": 24,
+    "channels": 2,
+    "bytes_received": 1234567890
+  },
+  "stream": {
+    "mount": "/live.flac",
+    "content_type": "audio/flac"
+  },
+  "listeners": {
+    "current": 1,
+    "peak": 3,
+    "total_connections": 12,
+    "bytes_sent": 987654321
+  }
+}
+```
+
+| Field | Description |
+|---|---|
+| `uptime_seconds` | Seconds since the relay process started |
+| `source.connected` | Whether ffmpeg is actively producing audio data |
+| `source.connected_since` | ISO-8601 timestamp of when the current ffmpeg session started |
+| `source.bytes_received` | Cumulative bytes received from ffmpeg (across all sessions) |
+| `listeners.current` | Currently connected listener count |
+| `listeners.peak` | Highest simultaneous listener count since startup |
+| `listeners.total_connections` | Total listener connections since startup |
+| `listeners.bytes_sent` | Cumulative bytes sent to all listeners |
+
+### Metadata — `GET /metadata` and `PUT /metadata`
+
+Out-of-band metadata API for querying and dynamically updating the stream title. This is purely informational and does not affect the audio stream.
+
+**Get current metadata:**
+
+```bash
+curl http://localhost:8100/metadata
+```
+
+```json
+{
+  "title": "Audio Source",
+  "source": "active"
+}
+```
+
+**Update the title dynamically:**
+
+```bash
+curl -X PUT http://localhost:8100/metadata \
+  -H "Content-Type: application/json" \
+  -d '{"title": "Vinyl — Abbey Road"}'
+```
+
+```json
+{
+  "title": "Vinyl — Abbey Road",
+  "updated": true
+}
+```
+
+The title defaults to the `STREAM_NAME` environment variable and resets on process restart (changes are in-memory only).
+
+### Stream — `GET /<MOUNT_POINT>`
+
+The live FLAC audio stream. Connect any HTTP audio client or player:
+
+```bash
+# Play with ffplay
+ffplay http://localhost:8100/live.flac
+
+# Play with VLC
+vlc http://localhost:8100/live.flac
+```
+
+**Response headers include:**
+
+| Header | Value |
+|---|---|
+| `Content-Type` | `audio/flac` |
+| `Cache-Control` | `no-cache` |
+| `Pragma` | `no-cache` |
+| `Expires` | `Mon, 26 Jul 1997 05:00:00 GMT` |
+| `Access-Control-Allow-Origin` | `*` |
+| `Server` | `lossless-stream/1.0.0` |
+
+Plus any custom headers from `EXTRA_HEADERS`.
+
+**Error responses:**
+
+- **503** — listener limit reached: `{"error": "listener limit reached", "max": 10, "current": 10}`
+- **503** — source not connected: `{"error": "source not connected", "status": "unavailable"}`
+
+## Stream Recording
+
+To record the raw stream to a file while simultaneously serving it to listeners:
+
+```yaml
+environment:
+  RECORD_FILE: "/data/recording.flac"
+volumes:
+  - ./recordings:/data
+```
+
+The recording file is opened in append mode — if ffmpeg restarts, new data is appended to the same file. To start a fresh recording, delete or rename the file before starting the container.
+
+## Custom HTTP Headers
+
+For reverse proxy setups or special requirements, inject custom headers into stream responses via the `EXTRA_HEADERS` environment variable:
+
+```yaml
+environment:
+  EXTRA_HEADERS: '{"X-Forwarded-Proto": "https", "X-Custom": "value"}'
+```
+
+These are parsed as a JSON object at startup and added to all stream responses.
 
 ## Troubleshooting
 
@@ -181,6 +359,17 @@ curl http://localhost:8100/health
 ### Buffer overrun warnings
 
 - Increase `THREAD_QUEUE_SIZE` in your `docker-compose.yml` or `.env` (try `8192` or `16384`)
+
+### Slow client disconnections
+
+- If clients are being dropped with queue limit warnings, increase `MAX_QUEUE_SIZE_KB` (default 512 KB)
+- Alternatively, investigate the client's network — slow/stalled connections are dropped to protect server memory
+
+### Source timeout / degraded health
+
+- The `/health` endpoint shows `"status": "degraded"` with `"ffmpeg": "timeout"` when ffmpeg stops producing data
+- Check your ALSA device and audio source — the capture may have stalled
+- The relay will automatically recover when ffmpeg restarts and data resumes
 
 ---
 
@@ -236,6 +425,9 @@ services:
       STREAM_NAME: "Audio Source"
       CHUNK_SIZE: "4096"
       THREAD_QUEUE_SIZE: "4096"
+      MAX_LISTENERS: "10"
+      MAX_QUEUE_SIZE_KB: "512"
+      SOURCE_TIMEOUT: "10"
 ```
 
 Then run `docker compose up -d --build`.
