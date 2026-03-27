@@ -47,6 +47,12 @@ SAMPLE_RATE       = os.environ.get("SAMPLE_RATE", "48000")
 CHANNELS          = os.environ.get("CHANNELS", "2")
 BIT_DEPTH         = os.environ.get("BIT_DEPTH", "24")
 PORT              = int(os.environ.get("RELAY_PORT", "8100"))
+
+# Map BIT_DEPTH to the PCM codec ffmpeg should request from ALSA.
+# This ensures ALSA opens the device at the correct sample format
+# instead of defaulting to S16_LE.
+_CODEC_MAP = {"16": "pcm_s16le", "24": "pcm_s24le", "32": "pcm_s32le"}
+ALSA_CODEC = _CODEC_MAP.get(BIT_DEPTH, "pcm_s24le")
 MOUNT             = os.environ.get("MOUNT_POINT", "live.flac")
 STREAM_NAME       = os.environ.get("STREAM_NAME", "Audio Source")
 CHUNK_SIZE        = int(os.environ.get("CHUNK_SIZE", "4096"))
@@ -110,6 +116,7 @@ else:
         "-thread_queue_size", THREAD_QUEUE_SIZE,
         "-ac", CHANNELS,
         "-ar", SAMPLE_RATE,
+        "-acodec", ALSA_CODEC,
         "-i", ALSA_DEVICE,
         "-c:a", "flac",
         "-compression_level", "0",
@@ -538,6 +545,7 @@ async def handle_stats(request: web.Request) -> web.Response:
             "format": "FLAC",
             "samplerate": int(SAMPLE_RATE),
             "bitdepth": int(BIT_DEPTH),
+            "alsa_codec": ALSA_CODEC,
             "channels": int(CHANNELS),
             "bytes_received": bytes_received_total,
         },
@@ -620,7 +628,7 @@ app.on_startup.append(on_startup)
 if __name__ == "__main__":
     log.info(
         f"Starting: ALSA={ALSA_DEVICE} SR={SAMPLE_RATE} "
-        f"CH={CHANNELS} BD={BIT_DEPTH}"
+        f"CH={CHANNELS} BD={BIT_DEPTH} CODEC={ALSA_CODEC}"
     )
     web.run_app(
         app,

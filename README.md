@@ -105,7 +105,7 @@ Set this as `ALSA_DEVICE` in your `docker-compose.yml` or `.env` file.
 | `ALSA_DEVICE` | `hw:0,0` | ALSA capture device (find with `arecord -l`) |
 | `SAMPLE_RATE` | `48000` | Sample rate in Hz (44100 for CD quality, 48000 for most USB interfaces) |
 | `CHANNELS` | `2` | Number of audio channels (2 = stereo) |
-| `BIT_DEPTH` | `24` | Bit depth (16 or 24) |
+| `BIT_DEPTH` | `24` | Bit depth (16, 24, or 32) — controls the ALSA capture format (e.g. `pcm_s24le`) passed to ffmpeg |
 | `RELAY_PORT` | `8100` | HTTP port the stream is served on |
 | `MOUNT_POINT` | `live.flac` | URL path for the stream (stream URL = `http://host:port/mount`) |
 | `STREAM_NAME` | `Audio Source` | Stream name shown in logs and the `/metadata` endpoint |
